@@ -2,7 +2,8 @@
 # ============================================================
 # Phase 1: 노드 정보 수집
 # ============================================================
-# 이 스크립트를 4개 노드 각각에서 실행하고 출력을 공유해주세요.
+# 각 노드에서 실행하여 하드웨어/소프트웨어 정보를 수집합니다.
+# 출력을 공유하면 이후 Phase 스크립트를 환경에 맞게 설정합니다.
 #
 # 사용법: bash phase1_collect_info.sh
 # ============================================================
@@ -13,7 +14,7 @@ echo "=========================================="
 echo ""
 
 echo "=== [1] Hostname & OS ==="
-hostname
+hostname -f 2>/dev/null || hostname
 cat /etc/os-release | grep -E "^(NAME|VERSION)="
 uname -r
 echo ""
@@ -27,67 +28,65 @@ free -h | head -2
 echo ""
 
 echo "=== [4] Network Interfaces ==="
-ip link show | grep -E "^[0-9]+:" | awk '{print $2}' | tr -d ':'
+ip -4 addr show | grep -E "inet " | awk '{print $NF, $2}'
 echo ""
 
-echo "=== [5] RDMA / Mellanox NIC 확인 ==="
-# PCIe에서 Mellanox/NVIDIA NIC 검색
-echo "--- lspci (Mellanox/NVIDIA network) ---"
-lspci | grep -iE "mellanox|connectx|nvidia.*network|infiniband" || echo "(not found)"
+echo "=== [5] Mellanox NIC / RDMA ==="
+echo "--- PCIe devices ---"
+lspci | grep -iE "mellanox|connectx|nvidia.*network" || echo "(not found)"
 echo ""
 
-# RDMA 커널 모듈 확인
 echo "--- RDMA kernel modules ---"
-lsmod | grep -iE "rdma|mlx|ib_" | head -10 || echo "(no RDMA modules loaded)"
+lsmod | grep -iE "rdma|mlx|ib_" | head -15 || echo "(none)"
 echo ""
 
-# ibstat / ibdev2netdev (있으면)
 echo "--- ibstat ---"
-ibstat 2>/dev/null || echo "(ibstat not available)"
+ibstat 2>/dev/null | head -30 || echo "(ibstat not available - rdma-core 미설치)"
 echo ""
+
 echo "--- ibdev2netdev ---"
 ibdev2netdev 2>/dev/null || echo "(ibdev2netdev not available)"
 echo ""
 
-# rdma 도구
 echo "--- rdma link ---"
-rdma link 2>/dev/null || echo "(rdma tool not available)"
+rdma link 2>/dev/null | head -10 || echo "(rdma tool not available)"
+echo ""
+
+echo "--- NIC NUMA affinity ---"
+for iface in $(ls /sys/class/net/ 2>/dev/null); do
+    numa=$(cat /sys/class/net/$iface/device/numa_node 2>/dev/null)
+    if [ -n "$numa" ] && [ "$numa" != "-1" ]; then
+        echo "  $iface → NUMA node $numa"
+    fi
+done
 echo ""
 
 echo "=== [6] OFED / RDMA 드라이버 ==="
-ofed_info -s 2>/dev/null || echo "(OFED not installed)"
-dpkg -l | grep -iE "mlnx-ofed|rdma-core|ibverbs" 2>/dev/null | head -5 || echo "(no RDMA packages)"
+ofed_info -s 2>/dev/null || echo "(OFED not installed - inbox driver)"
+dpkg -l 2>/dev/null | grep -iE "rdma-core|ibverbs" | head -5 || echo "(no rdma packages)"
 echo ""
 
-echo "=== [7] 기존 소프트웨어 ==="
-echo "--- CMake ---"
-cmake --version 2>/dev/null | head -1 || echo "(not installed)"
-echo "--- MPI ---"
-mpiexec --version 2>/dev/null | head -2 || echo "(not installed)"
-mpirun --version 2>/dev/null | head -2 || echo "(not installed)"
-echo "--- Boost ---"
-dpkg -l | grep libboost | head -3 || echo "(not found)"
-echo "--- GCC ---"
-gcc --version 2>/dev/null | head -1 || echo "(not installed)"
-echo "--- Python ---"
-python3 --version 2>/dev/null || echo "(not installed)"
-echo "--- numactl ---"
-numactl --hardware 2>/dev/null | head -5 || echo "(not installed)"
+echo "=== [7] Software ==="
+echo "  CMake: $(cmake --version 2>/dev/null | head -1 || echo 'NOT INSTALLED')"
+echo "  MPI:   $(mpiexec --version 2>/dev/null | head -1 || echo 'NOT INSTALLED')"
+echo "  GCC:   $(gcc --version 2>/dev/null | head -1 || echo 'NOT INSTALLED')"
+echo "  Python: $(python3 --version 2>/dev/null || echo 'NOT INSTALLED')"
+echo "  Boost:"
+dpkg -l 2>/dev/null | grep libboost | head -3 || echo "    (not found via dpkg)"
+if [ -f /usr/local/include/boost/version.hpp ]; then
+    echo "    /usr/local: $(grep BOOST_LIB_VERSION /usr/local/include/boost/version.hpp | head -1)"
+fi
 echo ""
 
 echo "=== [8] ulimit (locked memory) ==="
-ulimit -l
+echo "  ulimit -l: $(ulimit -l)"
 echo ""
 
 echo "=== [9] Disk Space ==="
 df -h / | tail -1
-df -h /tmp 2>/dev/null | tail -1
-echo ""
-
-echo "=== [10] IP Addresses ==="
-ip -4 addr show | grep inet | grep -v "127.0.0.1" | awk '{print $NF, $2}'
+lsblk -o NAME,SIZE,TYPE,MOUNTPOINT 2>/dev/null | head -10
 echo ""
 
 echo "=========================================="
-echo " Done! 이 출력을 전체 복사해서 공유해주세요."
+echo " Done! 이 출력 전체를 복사해서 공유해주세요."
 echo "=========================================="
