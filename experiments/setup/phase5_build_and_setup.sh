@@ -179,8 +179,40 @@ if [ -d build ]; then
     echo "  Cleaning existing build..."
     rm -rf build
 fi
+mkdir -p build
 
-bash build.sh 2>&1 | tail -30
+# Intel OMP 경로 자동 탐색
+OMP_PATH=""
+for candidate in \
+    /opt/intel/oneapi/compiler/latest/lib \
+    /opt/intel/oneapi/compiler/2025.3/lib \
+    /opt/intel/oneapi/compiler/2025.2/lib \
+    /opt/intel/oneapi/compiler/2025.1/lib \
+    /opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin \
+    /usr/lib/x86_64-linux-gnu \
+    /opt/intel/lib/intel64_lin; do
+    if [ -f "$candidate/libiomp5.so" ]; then
+        OMP_PATH="$candidate"
+        break
+    fi
+done
+
+if [ -z "$OMP_PATH" ]; then
+    OMP_PATH=$(find /opt/intel -name "libiomp5.so" -type f 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
+fi
+
+echo "  OMP_PATH: ${OMP_PATH:-NOT FOUND}"
+
+# build.sh 대신 직접 cmake + make (OMP_PATH 전달 필요)
+cd build
+CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
+if [ -n "$OMP_PATH" ]; then
+    CMAKE_ARGS="$CMAKE_ARGS -DOMP_PATH=$OMP_PATH"
+fi
+echo "  cmake $CMAKE_ARGS .."
+cmake $CMAKE_ARGS .. 2>&1 | tail -15
+make -j$(nproc) 2>&1 | tail -30
+cd "$REDANNS_DIR"
 
 echo ""
 echo "  Built binaries:"
