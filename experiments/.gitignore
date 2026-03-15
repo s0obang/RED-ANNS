@@ -1,0 +1,5 @@
+# 실험 결과물 (재생성 가능)
+logs/
+results/
+__pycache__/
+*.pyc
