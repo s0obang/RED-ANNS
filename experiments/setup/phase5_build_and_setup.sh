@@ -68,9 +68,21 @@ echo ""
 
 # ---- Step 2: global.hpp 설정 확인 ----
 echo "=== [2/6] global.hpp configuration ==="
-GLOBAL_HPP="$REDANNS_DIR/include/global.hpp"
+# global.hpp 경로 자동 탐색 (프로젝트 구조에 따라 다를 수 있음)
+GLOBAL_HPP=""
+for candidate in "$REDANNS_DIR/core/global.hpp" "$REDANNS_DIR/include/global.hpp" "$REDANNS_DIR/src/include/global.hpp"; do
+    if [ -f "$candidate" ]; then
+        GLOBAL_HPP="$candidate"
+        break
+    fi
+done
 
-if [ -f "$GLOBAL_HPP" ]; then
+if [ -z "$GLOBAL_HPP" ]; then
+    GLOBAL_HPP=$(find "$REDANNS_DIR" -name "global.hpp" -type f 2>/dev/null | head -1)
+fi
+
+if [ -n "$GLOBAL_HPP" ] && [ -f "$GLOBAL_HPP" ]; then
+    echo "  Found: $GLOBAL_HPP"
     echo "  Current settings:"
     grep -nE "num_servers|num_threads|memstore_size_gb|rdma_buf_size" "$GLOBAL_HPP" | \
         grep -v "^.*//.*$" | head -10 || true
@@ -88,7 +100,8 @@ if [ -f "$GLOBAL_HPP" ]; then
         exit 0
     fi
 else
-    echo "  ERROR: $GLOBAL_HPP not found"
+    echo "  ERROR: global.hpp not found in $REDANNS_DIR"
+    echo "  find로 확인: find $REDANNS_DIR -name 'global.hpp'"
     exit 1
 fi
 echo ""
