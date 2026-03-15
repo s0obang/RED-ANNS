@@ -1,5 +1,38 @@
 # RED-ANNS 실험 재현 가이드
 
+## ⚠️ CloudLab Control Network 주의사항 (필독!)
+
+CloudLab은 **control network**와 **experiment network**를 엄격히 분리합니다.
+control network의 과도한 사용은 **계정 정지** 또는 **실험 종료**를 초래합니다.
+
+```
+[Control Network]  128.105.x.x  (ens1f0np0, mlx5_4)  ← 인터넷 접속, SSH 로그인용
+[Experiment Network]  10.10.1.x  (ens2f0np0, mlx5_0)  ← 모든 실험 트래픽용
+```
+
+**반드시 지켜야 할 사항:**
+- `hosts`, `hosts.mpi` 파일에는 반드시 **10.10.1.x** (experiment network) IP만 기입
+- MPI 실행 시 `--mca btl_tcp_if_include ens2f0np0` + `--mca oob_tcp_if_include ens2f0np0` 필수
+- RDMA 트래픽은 experiment NIC (mlx5_0 / ens2f0np0)로만 전송
+- 노드 간 FQDN(hostname) 대신 10.10.1.x IP를 사용 (FQDN은 control net으로 해석됨)
+- `config.sh`의 `run_mpi()` 함수에 이미 이 설정이 포함되어 있음
+
+**허용되는 control network 사용:**
+- SSH 로그인 (외부에서 접속)
+- apt-get 등 패키지 설치 (1회성)
+- git clone/pull (1회성)
+
+**확인 방법 (실험 실행 중):**
+```bash
+# control network 인터페이스의 트래픽 확인 (거의 0이어야 함)
+tcpdump -c 100 -n -i ens1f0np0 not port ssh and not arp
+# CloudLab 웹 UI → Experiment → Graphs 탭에서 Control Traffic 확인
+```
+
+참고: https://docs.cloudlab.us/control-net.html
+
+---
+
 ## CloudLab Wisconsin 환경 정보 (Phase 1 수집)
 
 ```
@@ -10,8 +43,8 @@ NUMA:      node0 = CPU 0-15,32-47  |  node1 = CPU 16-31,48-63
 Memory:    251 Gi per node
 Disk:      ~57 Gi free (root partition)
 NIC:       ConnectX-6 Dx (4개) + ConnectX-6 Lx (2개)
-RDMA:      mlx5_0 (ens2f0np0) ACTIVE, 내부 IP 10.10.1.x/24
-           mlx5_4 (ens1f0np0) ACTIVE, 외부 IP 128.105.146.x/22
+RDMA:      mlx5_0 (ens2f0np0) ACTIVE, experiment IP 10.10.1.x/24
+           mlx5_4 (ens1f0np0) ACTIVE, control IP 128.105.146.x/22 ← 실험에 사용 금지!
 ```
 
 ## 파일 구조

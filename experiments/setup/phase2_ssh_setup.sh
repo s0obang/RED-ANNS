@@ -17,11 +17,11 @@
 
 set -euo pipefail
 
-# ★★★ 수정 필요: 4개 노드의 내부 IP ★★★
-# CloudLab 할당 후 각 노드의 10.10.1.x 주소를 입력하세요.
-# 확인 방법: 각 노드에서 ip -4 addr show ens2f0np0
-#
-# 아래는 예시입니다. 실제 IP로 교체하세요.
+# ★★★ 수정 필요: 4개 노드의 EXPERIMENT NETWORK IP ★★★
+# ⚠️ 반드시 10.10.1.x (experiment network) IP를 사용하세요!
+# ⚠️ FQDN이나 128.105.x.x (control network) IP 사용 금지!
+#    FQDN은 CloudLab DNS에서 control network IP로 해석됩니다.
+# 확인: 각 노드에서 ip -4 addr show ens2f0np0
 NODE_IPS=(
     "10.10.1.2"    # node-0 (마스터)
     "10.10.1.3"    # node-1

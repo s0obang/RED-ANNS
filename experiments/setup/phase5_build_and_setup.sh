@@ -20,8 +20,10 @@
 
 set -euo pipefail
 
-# ★★★ 수정 필요: 4개 노드의 RDMA NIC IP ★★★
-# ens2f0np0의 10.10.1.x 주소를 사용
+# ★★★ 수정 필요: 4개 노드의 EXPERIMENT NETWORK IP ★★★
+# ⚠️ 반드시 10.10.1.x (experiment network) IP를 사용하세요!
+# ⚠️ 절대 128.105.x.x (control network) IP를 넣지 마세요!
+# ⚠️ FQDN (node-0.red-anns...cloudlab.us) 사용 금지 (control net으로 해석됨)
 NODE_IPS=(
     "10.10.1.2"    # node-0 (마스터)
     "10.10.1.3"    # node-1
@@ -88,8 +90,14 @@ HOSTS_MPI="$REDANNS_DIR/hosts.mpi"
 > "$HOSTS_FILE"
 > "$HOSTS_MPI"
 
-echo "  Using RDMA NIC IPs (10.10.1.x):"
+echo "  Using EXPERIMENT NETWORK IPs (10.10.1.x):"
+echo "  ⚠️ hosts 파일에 control IP (128.x.x.x) 또는 FQDN이 있으면 안 됩니다!"
 for ip in "${NODE_IPS[@]}"; do
+    if [[ ! "$ip" == 10.* ]]; then
+        echo "  ✗ ERROR: $ip is NOT an experiment network IP (must be 10.x.x.x)"
+        echo "  CloudLab control network 사용은 정책 위반입니다."
+        exit 1
+    fi
     echo "$ip" >> "$HOSTS_FILE"
     echo "$ip slots=1" >> "$HOSTS_MPI"
     echo "  $ip"

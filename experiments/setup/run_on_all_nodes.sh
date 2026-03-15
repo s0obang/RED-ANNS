@@ -16,7 +16,8 @@ set -euo pipefail
 SCRIPT="${1:?Usage: bash run_on_all_nodes.sh <script.sh>}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ★★★ 수정 필요: phase2_ssh_setup.sh와 동일하게 ★★★
+# ★★★ 수정 필요: phase2_ssh_setup.sh와 동일한 EXPERIMENT NETWORK IP ★★★
+# ⚠️ 반드시 10.10.1.x IP 사용! FQDN/128.x.x.x 사용 금지!
 NODE_IPS=(
     "10.10.1.2"    # node-0
     "10.10.1.3"    # node-1
