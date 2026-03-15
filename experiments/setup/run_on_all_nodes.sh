@@ -19,10 +19,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ★★★ 수정 필요: phase2_ssh_setup.sh와 동일한 EXPERIMENT NETWORK IP ★★★
 # ⚠️ 반드시 10.10.1.x IP 사용! FQDN/128.x.x.x 사용 금지!
 NODE_IPS=(
-    "10.10.1.2"    # node-0
-    "10.10.1.3"    # node-1
-    "10.10.1.4"    # node-2
-    "10.10.1.5"    # node-3
+    "10.10.1.2"    # node-0 (ens2f0np0)
+    "10.10.1.1"    # node-1 (ens2f0np0)
+    "10.10.1.3"    # node-2 (ens2f0np0)
+    "10.10.1.4"    # node-3 (ens2f1np1)
 )
 SSH_USER="${USER}"
 

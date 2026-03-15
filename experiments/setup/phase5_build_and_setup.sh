@@ -25,10 +25,10 @@ set -euo pipefail
 # ⚠️ 절대 128.105.x.x (control network) IP를 넣지 마세요!
 # ⚠️ FQDN (node-0.red-anns...cloudlab.us) 사용 금지 (control net으로 해석됨)
 NODE_IPS=(
-    "10.10.1.2"    # node-0 (마스터)
-    "10.10.1.3"    # node-1
-    "10.10.1.4"    # node-2
-    "10.10.1.5"    # node-3
+    "10.10.1.2"    # node-0 (ens2f0np0)
+    "10.10.1.1"    # node-1 (ens2f0np0)
+    "10.10.1.3"    # node-2 (ens2f0np0)
+    "10.10.1.4"    # node-3 (ens2f1np1 ← NIC 이름 다름!)
 )
 SSH_USER="${USER}"
 

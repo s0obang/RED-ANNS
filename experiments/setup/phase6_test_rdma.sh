@@ -18,21 +18,21 @@ set -euo pipefail
 # ★★★ 수정 필요: experiment network IP (10.10.1.x) 사용 ★★★
 # ⚠️ 절대 control network IP (128.105.x.x)를 넣지 마세요!
 NODE_IPS=(
-    "10.10.1.2"    # node-0
-    "10.10.1.3"    # node-1
-    "10.10.1.4"    # node-2
-    "10.10.1.5"    # node-3
+    "10.10.1.2"    # node-0 (ens2f0np0, mlx5_0)
+    "10.10.1.1"    # node-1 (ens2f0np0, mlx5_0)
+    "10.10.1.3"    # node-2 (ens2f0np0, mlx5_0)
+    "10.10.1.4"    # node-3 (ens2f1np1 ← NIC 이름 다름, mlx5 디바이스 확인 필요)
 )
 SSH_USER="${USER}"
 REDANNS_DIR="$HOME/RED-ANNS"
 
-# RDMA 디바이스 (experiment network NIC)
-# ibdev2netdev에서 확인: mlx5_0 → ens2f0np0 (10.10.1.x)
-# ⚠️ mlx5_4 (ens1f0np0, 128.105.x.x)는 control network이므로 사용 금지!
-RDMA_DEV="mlx5_0"
+# RDMA 디바이스: 노드마다 다를 수 있으므로 자동 감지
+# node-0~2: mlx5_0 → ens2f0np0
+# node-3:   mlx5_? → ens2f1np1 (phase3 후 ibdev2netdev로 확인)
+RDMA_DEV="mlx5_0"  # 기본값, node-3은 아래에서 자동 감지
 
-# Experiment network NIC
-EXP_NIC="ens2f0np0"
+# Experiment network 서브넷
+EXP_SUBNET="10.10.1.0/24"
 
 echo "=========================================="
 echo " RDMA Connectivity Test"
@@ -40,24 +40,19 @@ echo " (experiment network only: 10.10.1.x)"
 echo "=========================================="
 echo ""
 
-# ---- Pre-check: experiment network 확인 ----
-echo "=== [Pre-check] Network interface verification ==="
-echo "  Expected: RDMA dev=$RDMA_DEV → NIC=$EXP_NIC → 10.10.1.x"
-echo ""
-
-# 로컬 노드에서 확인
-LOCAL_DEV_NIC=$(ibdev2netdev 2>/dev/null | grep "$RDMA_DEV" | awk '{print $5}' || echo "unknown")
-LOCAL_NIC_IP=$(ip -4 addr show "$EXP_NIC" 2>/dev/null | grep inet | awk '{print $2}' | cut -d/ -f1 || echo "unknown")
-
-echo "  Local: $RDMA_DEV → $LOCAL_DEV_NIC (IP: $LOCAL_NIC_IP)"
-
-if [[ "$LOCAL_NIC_IP" == 10.* ]]; then
-    echo "  ✓ Experiment network IP confirmed (10.x.x.x)"
-else
-    echo "  ✗ WARNING: IP is not 10.x.x.x! RDMA 트래픽이 control network를 탈 수 있습니다!"
-    echo "  RDMA_DEV를 확인하세요: ibdev2netdev"
-    exit 1
-fi
+# ---- Pre-check: 각 노드의 experiment network NIC 확인 ----
+echo "=== [Pre-check] Per-node experiment NIC verification ==="
+for node in "${NODE_IPS[@]}"; do
+    # 10.10.1.x가 할당된 NIC 이름 찾기
+    NODE_NIC=$(ssh "${SSH_USER}@${node}" \
+        "ip -4 addr show | grep '10\\.10\\.1\\.' | awk '{print \$NF}'" 2>/dev/null)
+    NODE_RDEV=$(ssh "${SSH_USER}@${node}" \
+        "ibdev2netdev 2>/dev/null | grep '$NODE_NIC' | awk '{print \$1}'" 2>/dev/null)
+    echo "  $node: NIC=$NODE_NIC  RDMA_DEV=${NODE_RDEV:-unknown}"
+    if [[ -z "$NODE_NIC" ]]; then
+        echo "    ✗ WARNING: No 10.10.1.x interface found!"
+    fi
+done
 echo ""
 
 # ---- Test 1: ibv_devinfo on all nodes ----
@@ -73,12 +68,8 @@ done
 # ---- Test 2: ibdev2netdev → experiment NIC 매핑 확인 ----
 echo "=== [2/5] ibdev2netdev (NIC mapping) ==="
 for node in "${NODE_IPS[@]}"; do
-    result=$(ssh "${SSH_USER}@${node}" "ibdev2netdev 2>/dev/null | grep '$RDMA_DEV'" 2>/dev/null)
+    result=$(ssh "${SSH_USER}@${node}" "ibdev2netdev 2>/dev/null | grep Up" 2>/dev/null)
     echo "  $node: $result"
-    # 경고: mlx5_0이 experiment NIC가 아닌 경우
-    if ! echo "$result" | grep -q "$EXP_NIC"; then
-        echo "    ⚠️ WARNING: $RDMA_DEV is NOT mapped to $EXP_NIC on this node!"
-    fi
 done
 echo ""
 
@@ -87,10 +78,10 @@ echo "=== [3/5] MPI basic test ==="
 cd "$REDANNS_DIR" 2>/dev/null || { echo "ERROR: $REDANNS_DIR not found"; exit 1; }
 
 echo "  Running: mpiexec -hostfile hosts.mpi -n 4 hostname"
-echo "  (btl+oob restricted to $EXP_NIC)"
+echo "  (btl+oob restricted to subnet $EXP_SUBNET)"
 mpiexec -hostfile hosts.mpi -n 4 \
-    --mca btl_tcp_if_include "$EXP_NIC" \
-    --mca oob_tcp_if_include "$EXP_NIC" \
+    --mca btl_tcp_if_include "$EXP_SUBNET" \
+    --mca oob_tcp_if_include "$EXP_SUBNET" \
     hostname 2>&1 || {
     echo "  FAILED!"
     echo "  확인사항:"

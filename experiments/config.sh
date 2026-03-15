@@ -9,11 +9,14 @@
 # experiment network (private IP, 10.x.x.x)를 엄격히 분리합니다.
 # control network의 과도한 사용은 계정 정지/실험 종료를 초래합니다.
 #
-# 이 설정은 모든 실험 트래픽이 experiment network (10.10.1.x)를
-# 통해서만 흐르도록 구성되어 있습니다.
-# - hosts 파일: 10.10.1.x IP만 사용
-# - MPI: btl_tcp_if_include + oob_tcp_if_include로 NIC 지정
-# - RDMA: experiment NIC (mlx5_0/ens2f0np0)의 dev_id=0 사용
+# 네트워크 매핑 (Phase 1 확인):
+#   node-0: ens2f0np0 = 10.10.1.2
+#   node-1: ens2f0np0 = 10.10.1.1
+#   node-2: ens2f0np0 = 10.10.1.3
+#   node-3: ens2f1np1 = 10.10.1.4  ← NIC 이름이 다름!
+#
+# 노드마다 NIC 이름이 다를 수 있으므로, MPI 설정은
+# NIC 이름 대신 서브넷(10.10.1.0/24)으로 제한합니다.
 #
 # ★★★ 수정이 필요한 항목은 ★ 표시 ★★★
 # ============================================================
@@ -22,22 +25,14 @@
 HOSTFILE="../hosts.mpi"
 HOSTS_FILE="../hosts"
 
-# ★ RDMA NIC 인터페이스명 (experiment network) ★
-# 반드시 10.10.1.x 주소가 할당된 NIC를 사용해야 합니다.
-# ibdev2netdev로 확인: mlx5_0 port 1 ==> ens2f0np0 (Up)
-#
-# ⚠️ 절대 control network NIC (128.105.x.x, ens1f0np0 등)을
-#    사용하지 마세요. CloudLab 정책 위반입니다.
-NIC_INTERFACE="ens2f0np0"
+# ★ Experiment network 서브넷 ★
+# 노드별 NIC 이름이 다르므로 (node-3: ens2f1np1) 서브넷으로 지정
+EXPERIMENT_SUBNET="10.10.1.0/24"
 
 # ---- NUMA 바인딩 ----
 # Xeon Silver 4314 (2소켓):
-#   NUMA node0: CPU 0-15,32-47   (소켓 0)
-#   NUMA node1: CPU 16-31,48-63  (소켓 1)
-#
-# NIC NUMA affinity 확인:
-#   cat /sys/class/net/ens2f0np0/device/numa_node
-# → NIC가 NUMA 0이면 cpunodebind=0, NUMA 1이면 cpunodebind=1
+#   NUMA node0: CPU 0-15,32-47
+#   NUMA node1: CPU 16-31,48-63
 NUMA_OPTS="numactl --cpunodebind=0 --membind=0"
 
 # ---- 바이너리 경로 ----
@@ -45,8 +40,6 @@ BIN_DISTRIBUTED="../build/tests/test_search_distributed"
 BIN_MAP_REDUCE="../build/tests/test_map_reduce"
 
 # ---- 데이터셋 설정 ----
-# 형식: "이름:JSON경로"
-#
 # ⚠️ 디스크 공간 ~57Gi 제한. 추가 스토리지 마운트 권장.
 DATASETS=(
     "deep100M:../app/deep100M_K4.json"
@@ -99,16 +92,18 @@ run_mpi() {
     num_servers=$(get_num_servers)
 
     # ⚠️ CloudLab 네트워크 안전 설정:
-    #   --mca btl_tcp_if_include: MPI 데이터 전송을 experiment NIC로 제한
-    #   --mca oob_tcp_if_include: MPI OOB(out-of-band) 통신도 experiment NIC로 제한
-    #   --mca btl_tcp_if_exclude: control network NIC 명시적 차단 (이중 안전)
     #
-    # 이 설정이 없으면 MPI가 control network (128.105.x.x)를 사용할 수 있어
+    # 노드별 NIC 이름이 다를 수 있으므로 (node-3: ens2f1np1 vs 나머지: ens2f0np0)
+    # NIC 이름 대신 서브넷으로 MPI 트래픽을 제한합니다.
+    #
+    #   btl_tcp_if_include: experiment 서브넷만 허용
+    #   oob_tcp_if_include: OOB 통신도 experiment 서브넷으로 제한
+    #
+    # 이 설정이 없으면 MPI가 control network (128.105.x.x)를 사용하여
     # CloudLab 정책 위반이 됩니다.
     mpiexec -hostfile "$HOSTFILE" -n "$num_servers" \
-        --mca btl_tcp_if_include "$NIC_INTERFACE" \
-        --mca oob_tcp_if_include "$NIC_INTERFACE" \
-        --mca btl_tcp_if_exclude lo,ens1f0np0,ens1f1np1,enp177s0f0np0,enp177s0f1np1 \
+        --mca btl_tcp_if_include "$EXPERIMENT_SUBNET" \
+        --mca oob_tcp_if_include "$EXPERIMENT_SUBNET" \
         $NUMA_OPTS \
         "$binary" config "$HOSTS_FILE" "$@"
 }

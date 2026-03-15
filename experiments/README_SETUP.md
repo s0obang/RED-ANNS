@@ -7,15 +7,23 @@ control network의 과도한 사용은 **계정 정지** 또는 **실험 종료*
 
 ```
 [Control Network]  128.105.x.x  (ens1f0np0, mlx5_4)  ← 인터넷 접속, SSH 로그인용
-[Experiment Network]  10.10.1.x  (ens2f0np0, mlx5_0)  ← 모든 실험 트래픽용
+[Experiment Network]  10.10.1.x  (ens2f0np0 또는 ens2f1np1)  ← 모든 실험 트래픽용
 ```
+
+**노드별 NIC 매핑:**
+| 노드 | NIC 이름 | IP |
+|------|---------|-----|
+| node-0 | ens2f0np0 | 10.10.1.2 |
+| node-1 | ens2f0np0 | 10.10.1.1 |
+| node-2 | ens2f0np0 | 10.10.1.3 |
+| node-3 | **ens2f1np1** | 10.10.1.4 |
 
 **반드시 지켜야 할 사항:**
 - `hosts`, `hosts.mpi` 파일에는 반드시 **10.10.1.x** (experiment network) IP만 기입
-- MPI 실행 시 `--mca btl_tcp_if_include ens2f0np0` + `--mca oob_tcp_if_include ens2f0np0` 필수
-- RDMA 트래픽은 experiment NIC (mlx5_0 / ens2f0np0)로만 전송
-- 노드 간 FQDN(hostname) 대신 10.10.1.x IP를 사용 (FQDN은 control net으로 해석됨)
-- `config.sh`의 `run_mpi()` 함수에 이미 이 설정이 포함되어 있음
+- MPI: NIC 이름 대신 **서브넷** `10.10.1.0/24`로 제한 (node-3 NIC 이름이 다르므로)
+- RDMA 트래픽은 experiment NIC로만 전송
+- 노드 간 FQDN(hostname) 대신 10.10.1.x IP 사용 (FQDN은 control net으로 해석됨)
+- `config.sh`의 `run_mpi()` 함수에 이 설정이 포함되어 있음
 
 **허용되는 control network 사용:**
 - SSH 로그인 (외부에서 접속)
@@ -44,6 +52,7 @@ Memory:    251 Gi per node
 Disk:      ~57 Gi free (root partition)
 NIC:       ConnectX-6 Dx (4개) + ConnectX-6 Lx (2개)
 RDMA:      mlx5_0 (ens2f0np0) ACTIVE, experiment IP 10.10.1.x/24
+           ⚠️ node-3은 NIC 이름이 ens2f1np1로 다름!
            mlx5_4 (ens1f0np0) ACTIVE, control IP 128.105.146.x/22 ← 실험에 사용 금지!
 ```
 
@@ -245,7 +254,7 @@ bash run_all.sh --dry-run
 cd ~/RED-ANNS/experiments
 
 # ★ config.sh 확인 ★
-# NIC_INTERFACE="ens2f0np0"
+# EXPERIMENT_SUBNET="10.10.1.0/24"  (NIC 이름이 노드마다 다르므로 서브넷 사용)
 # NUMA_OPTS="numactl --cpunodebind=0 --membind=0"
 # DATASETS에서 원하는 데이터셋 주석 해제
 
@@ -311,7 +320,7 @@ python3 plot_all.py --figure fig10 --pdf
 ### MPI 연결 오류
 ```bash
 # NIC 인터페이스 명시
-mpiexec --mca btl_tcp_if_include ens2f0np0 ...
+mpiexec --mca btl_tcp_if_include 10.10.1.0/24 --mca oob_tcp_if_include 10.10.1.0/24 ...
 
 # 또는 btl_tcp_if_exclude로 외부 인터페이스 제외
 mpiexec --mca btl_tcp_if_exclude ens1f0np0,lo ...

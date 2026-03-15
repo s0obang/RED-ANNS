@@ -23,10 +23,10 @@ set -euo pipefail
 #    FQDN은 CloudLab DNS에서 control network IP로 해석됩니다.
 # 확인: 각 노드에서 ip -4 addr show ens2f0np0
 NODE_IPS=(
-    "10.10.1.2"    # node-0 (마스터)
-    "10.10.1.3"    # node-1
-    "10.10.1.4"    # node-2
-    "10.10.1.5"    # node-3
+    "10.10.1.2"    # node-0 (ens2f0np0)
+    "10.10.1.1"    # node-1 (ens2f0np0)
+    "10.10.1.3"    # node-2 (ens2f0np0)
+    "10.10.1.4"    # node-3 (ens2f1np1 ← NIC 이름 다름!)
 )
 
 # CloudLab 사용자명
