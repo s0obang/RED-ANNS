@@ -138,9 +138,30 @@ echo ""
 
 # ---- Step 4: MKL 환경 로드 ----
 echo "=== [4/6] Loading MKL environment ==="
+# setvars.sh는 시간이 오래 걸릴 수 있으므로 timeout 적용
 if [ -f /opt/intel/oneapi/setvars.sh ]; then
-    source /opt/intel/oneapi/setvars.sh > /dev/null 2>&1 || true
-    echo "  → Intel oneAPI loaded"
+    echo "  Loading Intel oneAPI (timeout 60s)..."
+    timeout 60 bash -c 'source /opt/intel/oneapi/setvars.sh --force > /dev/null 2>&1 && env' > /tmp/mkl_env.txt 2>/dev/null && {
+        # setvars.sh가 설정한 환경변수 중 MKL/Intel 관련만 적용
+        while IFS='=' read -r key val; do
+            case "$key" in
+                MKLROOT|MKL*|INTEL*|ONEAPI*|LD_LIBRARY_PATH|CPATH|CMAKE_PREFIX_PATH|PKG_CONFIG_PATH)
+                    export "$key=$val" 2>/dev/null || true
+                    ;;
+            esac
+        done < /tmp/mkl_env.txt
+        rm -f /tmp/mkl_env.txt
+        echo "  → Intel oneAPI loaded (MKLROOT=${MKLROOT:-not set})"
+    } || {
+        echo "  → setvars.sh timed out or failed, trying direct MKLROOT..."
+        # setvars.sh 없이 직접 설정
+        if [ -d /opt/intel/oneapi/mkl/latest ]; then
+            export MKLROOT=/opt/intel/oneapi/mkl/latest
+            export LD_LIBRARY_PATH="${MKLROOT}/lib/intel64:${LD_LIBRARY_PATH:-}"
+            export CMAKE_PREFIX_PATH="${MKLROOT}:${CMAKE_PREFIX_PATH:-}"
+            echo "  → MKLROOT=$MKLROOT (direct)"
+        fi
+    }
 elif [ -f /opt/intel/mkl/bin/mklvars.sh ]; then
     source /opt/intel/mkl/bin/mklvars.sh intel64 > /dev/null 2>&1 || true
     echo "  → MKL loaded"
