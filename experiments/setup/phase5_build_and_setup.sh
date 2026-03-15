@@ -5,31 +5,40 @@
 # 마스터 노드 (node-0)에서 실행.
 # global.hpp 확인 → hosts 파일 생성 → 빌드 → 전체 노드에 sync
 #
+# ★ CloudLab 듀얼 네트워크 구조 ★
+#   - SSH/rsync: hostname (control network) 사용
+#   - hosts/hosts.mpi: 10.10.1.x (experiment network) IP만 기입
+#   - MPI/RDMA: experiment network만 사용
+#
 # CloudLab Wisconsin 환경:
-#   - 4 노드, 내부 IP: 10.10.1.x/24 (ens2f0np0)
-#   - CPU: 2× Xeon Silver 4314 (16C/32T)
+#   - 4 노드, experiment IP: 10.10.1.x/24
+#   - CPU: 2x Xeon Silver 4314 (16C/32T)
 #   - Memory: 251 Gi per node
 #
-# 사전 조건:
-#   - Phase 2 (SSH) 완료
-#   - Phase 3 (RDMA) 완료
-#   - Phase 4 (Dependencies) 완료
-#
+# 사전 조건: Phase 2~4 완료
 # 사용법: bash phase5_build_and_setup.sh
 # ============================================================
 
 set -euo pipefail
 
-# ★★★ 수정 필요: 4개 노드의 EXPERIMENT NETWORK IP ★★★
-# ⚠️ 반드시 10.10.1.x (experiment network) IP를 사용하세요!
+# ★★★ 듀얼 주소 설정 ★★★
+# hostname: SSH/rsync에 사용 (control network 경유)
+NODE_HOSTNAMES=(
+    "node-0"
+    "node-1"
+    "node-2"
+    "node-3"
+)
+
+# experiment IP: hosts/hosts.mpi에 기입 (MPI/RDMA 트래픽 전용)
 # ⚠️ 절대 128.105.x.x (control network) IP를 넣지 마세요!
-# ⚠️ FQDN (node-0.red-anns...cloudlab.us) 사용 금지 (control net으로 해석됨)
-NODE_IPS=(
+NODE_EXP_IPS=(
     "10.10.1.2"    # node-0 (ens2f0np0)
     "10.10.1.1"    # node-1 (ens2f0np0)
     "10.10.1.3"    # node-2 (ens2f0np0)
     "10.10.1.4"    # node-3 (ens2f1np1 ← NIC 이름 다름!)
 )
+
 SSH_USER="${USER}"
 
 # RED-ANNS 소스 경로
@@ -38,6 +47,9 @@ REDANNS_DIR="$HOME/RED-ANNS"
 echo "=========================================="
 echo " RED-ANNS Build & Cluster Setup"
 echo " (CloudLab Wisconsin)"
+echo ""
+echo " SSH/rsync: hostnames (control net)"
+echo " hosts/MPI: experiment IPs (10.10.1.x)"
 echo "=========================================="
 echo ""
 
@@ -81,7 +93,7 @@ else
 fi
 echo ""
 
-# ---- Step 3: hosts 파일 생성 ----
+# ---- Step 3: hosts 파일 생성 (experiment IP만!) ----
 echo "=== [3/6] Generating hosts files ==="
 
 HOSTS_FILE="$REDANNS_DIR/hosts"
@@ -90,9 +102,9 @@ HOSTS_MPI="$REDANNS_DIR/hosts.mpi"
 > "$HOSTS_FILE"
 > "$HOSTS_MPI"
 
-echo "  Using EXPERIMENT NETWORK IPs (10.10.1.x):"
-echo "  ⚠️ hosts 파일에 control IP (128.x.x.x) 또는 FQDN이 있으면 안 됩니다!"
-for ip in "${NODE_IPS[@]}"; do
+echo "  Using EXPERIMENT NETWORK IPs (10.10.1.x) for hosts files:"
+echo "  ⚠️ hosts 파일에 hostname/FQDN/128.x.x.x IP가 있으면 안 됩니다!"
+for ip in "${NODE_EXP_IPS[@]}"; do
     if [[ ! "$ip" == 10.* ]]; then
         echo "  ✗ ERROR: $ip is NOT an experiment network IP (must be 10.x.x.x)"
         echo "  CloudLab control network 사용은 정책 위반입니다."
@@ -153,29 +165,36 @@ if [ ! -f build/tests/test_search_distributed ]; then
     exit 1
 fi
 
-# ---- Step 6: 모든 노드에 동기화 ----
-echo "=== [6/6] Syncing to all nodes ==="
+# ---- Step 6: 모든 노드에 동기화 (hostname으로 rsync) ----
+echo "=== [6/6] Syncing to all nodes (via hostname) ==="
 export WUKONG_ROOT="$REDANNS_DIR"
 
-# sync.sh 내부에서 WUKONG_ROOT를 사용하는지 확인
-if grep -q "WUKONG_ROOT" "$REDANNS_DIR/sync.sh"; then
-    bash sync.sh 2>&1 | tail -10
-else
-    # 수동 rsync
-    echo "  Manual rsync to all nodes..."
-    for ip in "${NODE_IPS[@]}"; do
-        echo "  → Syncing to $ip ..."
+# sync.sh가 있고 WUKONG_ROOT를 사용하면 시도
+SYNC_DONE=false
+if [ -f "$REDANNS_DIR/sync.sh" ] && grep -q "WUKONG_ROOT" "$REDANNS_DIR/sync.sh"; then
+    echo "  Trying sync.sh..."
+    bash sync.sh 2>&1 | tail -10 && SYNC_DONE=true || echo "  sync.sh failed, falling back to manual rsync"
+fi
+
+if [ "$SYNC_DONE" = false ]; then
+    echo "  Manual rsync to all nodes (via hostname)..."
+    for i in "${!NODE_HOSTNAMES[@]}"; do
+        node="${NODE_HOSTNAMES[$i]}"
+        echo "  → Syncing to $node ..."
         rsync -az --exclude='.git' --exclude='build' \
-            "$REDANNS_DIR/" "${SSH_USER}@${ip}:${REDANNS_DIR}/" 2>/dev/null || \
-            echo "    WARNING: rsync to $ip failed"
+            "$REDANNS_DIR/" "${SSH_USER}@${node}:${REDANNS_DIR}/" 2>/dev/null || \
+            echo "    WARNING: rsync to $node failed"
         # 빌드 바이너리 별도 복사
-        rsync -az "$REDANNS_DIR/build/" "${SSH_USER}@${ip}:${REDANNS_DIR}/build/" 2>/dev/null || true
+        rsync -az "$REDANNS_DIR/build/" "${SSH_USER}@${node}:${REDANNS_DIR}/build/" 2>/dev/null || true
     done
 fi
 echo ""
 
 echo "=========================================="
 echo " Build & Setup Complete!"
+echo ""
+echo " hosts/hosts.mpi: experiment IPs (10.10.1.x) ← MPI/RDMA용"
+echo " rsync: hostname (control net) ← 파일 전송용"
 echo ""
 echo " 다음 단계: RDMA 연결 테스트"
 echo "   bash phase6_test_rdma.sh"
