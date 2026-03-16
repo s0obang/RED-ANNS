@@ -74,7 +74,37 @@ public:
             // init device and create QPs
             ctrl = new RdmaCtrl(nid, ipset, RDMA_CTRL_PORT, true); // enable single context
             ctrl->query_devinfo();  // 查询机器上的所有 device
-            ctrl->open_device();    // 打开指定的 device
+
+            // Auto-detect the first ACTIVE RDMA device and port.
+            // On CloudLab, node-3 has mlx5_0=PORT_DOWN and mlx5_1=PORT_ACTIVE,
+            // so we cannot hardcode device 0.
+            int active_dev_id = -1;
+            int active_port_id = -1;
+            for (int did = 0; did < ctrl->num_devices_; did++) {
+                struct ibv_context *tmp_ctx = ibv_open_device(ctrl->dev_list_[did]);
+                if (!tmp_ctx) continue;
+                struct ibv_device_attr tmp_attr;
+                ibv_query_device(tmp_ctx, &tmp_attr);
+                for (int pid = 1; pid <= tmp_attr.phys_port_cnt; pid++) {
+                    struct ibv_port_attr pattr;
+                    ibv_query_port(tmp_ctx, pid, &pattr);
+                    if (pattr.state == IBV_PORT_ACTIVE) {
+                        active_dev_id = did;
+                        active_port_id = pid;
+                        break;
+                    }
+                }
+                ibv_close_device(tmp_ctx);
+                if (active_dev_id >= 0) break;
+            }
+            if (active_dev_id < 0) {
+                logstream(LOG_ERROR) << "No ACTIVE RDMA device found!" << LOG_endl;
+                ASSERT(false);
+            }
+            logstream(LOG_INFO) << "RDMA: using device " << ctrl->dev_list_[active_dev_id]->name
+                                << " (dev=" << active_dev_id << ", port=" << active_port_id << ")" << LOG_endl;
+
+            ctrl->open_device(active_dev_id);
             for (auto mr : mrs) {
                 switch (mr.type) {
                 case RDMA::MemType::CPU:
@@ -98,12 +128,8 @@ public:
             ctrl->start_server();
             for (uint j = 0; j < nthds; ++j) {
                 for (uint i = 0; i < nnodes; ++i) {
-                    // FIXME: statically use 1 device and 1 port
-                    //
-                    // devID: [0, #devs), portID: (0, #ports]
-                    // 0: always choose the 1st (RDMA) device
-                    // 1: always choose the 1st (RDMA) port
-                    Qp *qp = ctrl->create_rc_qp(j, i, 0, 1);
+                    // Use auto-detected active device and port
+                    Qp *qp = ctrl->create_rc_qp(j, i, active_dev_id, active_port_id);
                     ASSERT(qp != NULL);
                 }
             }
