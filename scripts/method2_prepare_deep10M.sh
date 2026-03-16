@@ -211,36 +211,10 @@ else
     [[ -n "${VAMANA_LEARN_ARGS:-}" ]] && IFS=' ' read -r -a builder_args <<< "$VAMANA_LEARN_ARGS"
     "$VAMANA_LEARN_BUILDER" --base "$SAMPLE_FILE" --out "$SAMPLE_GRAPH_FILE" --k "$BKMEANS_K" "${builder_args[@]}"
   else
-    echo "No VAMANA_LEARN_BUILDER. Fallback: temporary ring graph."
-    python3 - "$SAMPLE_SIZE" "$SAMPLE_GRAPH_FILE" <<'PY'
-import os, struct, argparse
-parser = argparse.ArgumentParser()
-parser.add_argument("n", type=int)
-parser.add_argument("out")
-args = parser.parse_args()
-
-n = int(args.n)
-out = args.out
-R = 2
-with open(out, "wb") as f:
-    f.write(struct.pack("<Q", 0))
-    f.write(struct.pack("<I", R))
-    f.write(struct.pack("<I", 0))
-    f.write(struct.pack("<Q", 0))
-    edges = 0
-    for i in range(n):
-        neighbors = [(i + r) % n for r in range(1, R + 1)]
-        f.write(struct.pack("<I", len(neighbors)))
-        for nb in neighbors:
-            f.write(struct.pack("<I", nb))
-        edges += len(neighbors)
-
-file_size = (8 + 4 + 4 + 8) + edges * 4 + n * 4
-with open(out, "r+b") as f:
-    f.seek(0)
-    f.write(struct.pack("<Q", file_size))
-print(f"OK: write temporary learn graph {out}")
-PY
+    echo "ERROR: VAMANA_LEARN_BUILDER is not set or not executable."
+    echo "       This script cannot safely build a valid learn graph without a real Vamana builder."
+    echo "       Set VAMANA_LEARN_BUILDER=/path/to/learn_builder and rerun."
+    exit 1
   fi
 fi
 
@@ -254,37 +228,10 @@ else
     [[ -n "${VAMANA_BASE_ARGS:-}" ]] && IFS=' ' read -r -a builder_args <<< "$VAMANA_BASE_ARGS"
     "$VAMANA_BASE_BUILDER" --base "$DEEP10M_FILE" --out "$BASE_GRAPH_FILE" --k "$BKMEANS_K" "${builder_args[@]}"
   else
-    echo "No VAMANA_BASE_BUILDER. Fallback: temporary ring graph."
-    n_base="$(python3 - "$DEEP10M_FILE" <<'PY'
-import numpy as np, sys
-with open(sys.argv[1], "rb") as f:
-    print(int(np.fromfile(f, dtype=np.uint32, count=1)[0]))
-PY
-)"
-    python3 - "$n_base" "$BASE_GRAPH_FILE" <<'PY'
-import os, struct, argparse
-parser = argparse.ArgumentParser()
-parser.add_argument("n", type=int)
-parser.add_argument("out")
-args = parser.parse_args()
-
-n = int(args.n)
-out = args.out
-with open(out, "wb") as f:
-    f.write(struct.pack("<Q", 0))
-    f.write(struct.pack("<I", 1))
-    f.write(struct.pack("<I", 0))
-    f.write(struct.pack("<Q", 0))
-    for i in range(n):
-        f.write(struct.pack("<I", 1))
-        f.write(struct.pack("<I", (i + 1) % n))
-
-file_size = (8 + 4 + 4 + 8) + n * 8
-with open(out, "r+b") as f:
-    f.seek(0)
-    f.write(struct.pack("<Q", file_size))
-print(f"OK: write temporary base graph {out}")
-PY
+    echo "ERROR: VAMANA_BASE_BUILDER is not set or not executable."
+    echo "       This script cannot safely build a valid base graph without a real Vamana builder."
+    echo "       Set VAMANA_BASE_BUILDER=/path/to/base_builder and rerun."
+    exit 1
   fi
 fi
 
