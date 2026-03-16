@@ -1,53 +1,55 @@
 #!/usr/bin/env bash
 
-# ------------------------------------------------------------
-# deep10M 노드 동기화 스크립트 (node-0 -> node-1/2/3)
-# - 전제: ssh/rsync 노드 간 통신 가능
-# - 생성된 파일 소유권을 원격 노드 사용자 기준으로 정리
-# ------------------------------------------------------------
-
+# Sync RED-ANNS deep10M artifacts from node-0 to all members.
 set -euo pipefail
 
 DATA_DIR="${1:-/ann/data/deep10M}"
 NODES="${2:-node-1 node-2 node-3}"
 REMOTE_USER="${3:-$USER}"
-
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-FILES=(
-  "base.10M.fbin"
-  "query.public.10K.fbin"
-  "groundtruth.public.10K.ibin"
-  "deep10M.vamana"
-  "deep10M_sample1k.fbin"
-  "deep10M_sample1k.vamana"
-  "deep10M_sample1k_gt100.ibin"
-  "deep10M.bkmeans_input.txt"
-  "deep10M_K4.bkmeans_centroids.txt"
-  "deep10M_K4.bkmeans_labels.txt"
-)
+BUCKET_COUNT="${4:-4}"
+FILENAME_PREFIX="${5:-$DATA_DIR}"
 
 REMOTE_UID="$(id -u)"
 REMOTE_GID="$(id -g)"
 
+BASE_FILES=(
+  "$DATA_DIR/base.10M.fbin"
+  "$DATA_DIR/query.public.10K.fbin"
+  "$DATA_DIR/groundtruth.public.10K.ibin"
+  "$DATA_DIR/deep10M.vamana"
+  "$DATA_DIR/deep10M_sample1k.fbin"
+  "$DATA_DIR/deep10M_sample1k.vamana"
+  "$DATA_DIR/deep10M_sample1k_gt100.ibin"
+  "$DATA_DIR/deep10M.bkmeans_input.txt"
+  "$DATA_DIR/deep10M_K4.bkmeans_centroids.txt"
+  "$DATA_DIR/deep10M_K4.bkmeans_labels.txt"
+  "$FILENAME_PREFIX.meta"
+  "$FILENAME_PREFIX.partition"
+  "$FILENAME_PREFIX.lid"
+  "$FILENAME_PREFIX.data_num"
+)
+
+for i in $(seq 0 $((BUCKET_COUNT-1))); do
+  BASE_FILES+=("$FILENAME_PREFIX.bucket_$i")
+done
+
 mkdir -p "$DATA_DIR"
+mkdir -p "${FILENAME_PREFIX%/*}"
 
 for n in $NODES; do
   echo "== $n =="
-  echo "Check remote directory..."
-  ssh "$REMOTE_USER@$n" "sudo mkdir -p '$DATA_DIR' && sudo chown $REMOTE_UID:$REMOTE_GID '$DATA_DIR'"
+  ssh "$REMOTE_USER@$n" "sudo mkdir -p '$DATA_DIR' '${FILENAME_PREFIX%/*}' && sudo chown $REMOTE_UID:$REMOTE_GID '$DATA_DIR' '${FILENAME_PREFIX%/*}'"
 
-  for f in "${FILES[@]}"; do
-    local_path="$DATA_DIR/$f"
-    if [[ -f "$local_path" ]]; then
-      echo "  sync $f"
-      rsync -av --inplace --partial "$local_path" "$REMOTE_USER@$n:$DATA_DIR/$f"
-      ssh "$REMOTE_USER@$n" "sudo chown $REMOTE_UID:$REMOTE_GID '$DATA_DIR/$f'"
-    else
-      echo "  [skip] $local_path (missing)"
+  for f in "${BASE_FILES[@]}"; do
+    if [[ ! -e "$f" ]]; then
+      echo "  [skip] $(basename "$f") (missing)"
+      continue
     fi
+
+    echo "  sync $(basename "$f")"
+    rsync -av --inplace --partial "$f" "$REMOTE_USER@$n:$f"
+    ssh "$REMOTE_USER@$n" "sudo chown $REMOTE_UID:$REMOTE_GID '$f'"
   done
 done
 
 echo "[done] Sync complete."
-

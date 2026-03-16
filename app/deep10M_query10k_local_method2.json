@@ -1,7 +1,7 @@
 {
   "metric": "L2",
   "file_format": "bin",
-  "base_file": "/ann/data/deep10M/base.10M.fbin",
+  "base_file": "/ann/data/deep10M/deep10M.fbin",
   "graph_file": "/ann/data/deep10M/deep10M.vamana",
   "learn_data_file": "/ann/data/deep10M/deep10M_sample1k.fbin",
   "learn_graph_file": "/ann/data/deep10M/deep10M_sample1k.vamana",
@@ -16,5 +16,5 @@
   "bkmeans_labels_output_file": "/ann/data/deep10M/deep10M_K4.bkmeans_labels.txt",
   "bkmeans_centroids_output_file": "/ann/data/deep10M/deep10M_K4.bkmeans_centroids.txt",
   "bucket_count": "4",
-  "filename_prefix": "./data/deep10M"
+  "filename_prefix": "/ann/data/deep10M"
 }

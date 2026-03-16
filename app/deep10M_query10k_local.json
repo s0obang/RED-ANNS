@@ -6,8 +6,8 @@
   "learn_data_file": "/ann/data/deep10M/deep10M_sample1k.fbin",
   "learn_graph_file": "/ann/data/deep10M/deep10M_sample1k.vamana",
   "learn_gt_file": "/ann/data/deep10M/deep10M_sample1k_gt100.ibin",
-  "query_file": "/ann/data/deep10M/deep10M_queries.fbin",
-  "gt_file": "/ann/data/deep10M/deep10M_groundtruth.ibin",
+  "query_file": "/ann/data/deep10M/query.public.10K.fbin",
+  "gt_file": "/ann/data/deep10M/groundtruth.public.10K.ibin",
   "K": "10",
   "L": "100",
   "T": "16",
@@ -16,5 +16,5 @@
   "bkmeans_labels_output_file": "/ann/data/deep10M/deep10M_K4.bkmeans_labels.txt",
   "bkmeans_centroids_output_file": "/ann/data/deep10M/deep10M_K4.bkmeans_centroids.txt",
   "bucket_count": "4",
-  "filename_prefix": "./data/deep10M"
+  "filename_prefix": "/ann/data/deep10M"
 }
