@@ -109,13 +109,39 @@ else()
 
     # compile flags and link libraries
     add_compile_options(-m64 -Wl,--no-as-needed)
+    if (NOT DEFINED OPENMP_LINK_LIB OR "${OPENMP_LINK_LIB}" STREQUAL "")
+        set(OPENMP_LINK_LIB gomp)
+    endif()
+
+    if (NOT DEFINED MKL_THREADING_LIB OR "${MKL_THREADING_LIB}" STREQUAL "")
+        if (OPENMP_LINK_LIB STREQUAL "iomp5")
+            set(MKL_THREADING_LIB mkl_intel_thread)
+        else()
+            if (OPENMP_LINK_LIB STREQUAL "gomp")
+                # GNU OpenMP runtime is not ABI-compatible with Intel's threaded MKL lib.
+                # Use sequential MKL when linking against gomp.
+                set(MKL_THREADING_LIB mkl_intel_sequential)
+            else()
+                set(MKL_THREADING_LIB mkl_intel_thread)
+            endif()
+        endif()
+    endif()
+
+    if (OPENMP_LINK_LIB STREQUAL "gomp" AND NOT MKL_THREADING_LIB STREQUAL "mkl_intel_sequential")
+        message(WARNING "OPENMP_LINK_LIB=gomp but MKL_THREADING_LIB=${MKL_THREADING_LIB}; this often causes undefined __kmpc_* symbols. "
+                        "For GNU OpenMP, prefer -DMKL_THREADING_LIB=mkl_intel_sequential")
+    endif()
+
+    message(STATUS "Using OpenMP link lib: ${OPENMP_LINK_LIB}")
+    message(STATUS "Using MKL threading lib: ${MKL_THREADING_LIB}")
+
     if (NOT PYBIND)
-        link_libraries(mkl_intel_ilp64 mkl_intel_thread mkl_core ${OPENMP_LINK_LIB} pthread m dl)
+        link_libraries(mkl_intel_ilp64 ${MKL_THREADING_LIB} mkl_core ${OPENMP_LINK_LIB} pthread m dl)
     else()
         # static linking for python so as to minimize customer dependency issues
         link_libraries(
                 ${MKL_PATH}/libmkl_intel_ilp64.a
-                ${MKL_PATH}/libmkl_intel_thread.a
+                ${MKL_PATH}/${MKL_THREADING_LIB}.a
                 ${MKL_PATH}/libmkl_core.a
                 ${MKL_DEF_SO}
                 ${OPENMP_LINK_LIB}
