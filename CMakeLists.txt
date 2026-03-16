@@ -39,16 +39,49 @@ if (MSVC)
         "${DISKANN_MKL_LIB_PATH}/mkl_intel_thread.lib")
 else()
     # expected path for manual intel mkl installs
-    set(POSSIBLE_OMP_PATHS "/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so;/usr/lib/x86_64-linux-gnu/libiomp5.so;/opt/intel/lib/intel64_lin/libiomp5.so")
-    foreach(POSSIBLE_OMP_PATH ${POSSIBLE_OMP_PATHS})
-        if (EXISTS ${POSSIBLE_OMP_PATH})
-            get_filename_component(OMP_PATH ${POSSIBLE_OMP_PATH} DIRECTORY)
+    if (DEFINED OMP_PATH)
+        if (IS_DIRECTORY ${OMP_PATH})
+            set(_OMP_PATH ${OMP_PATH})
+        else()
+            get_filename_component(_OMP_PATH ${OMP_PATH} DIRECTORY)
         endif()
-    endforeach()
-
-    if(NOT OMP_PATH)
-        message(FATAL_ERROR "Could not find Intel OMP in standard locations; use -DOMP_PATH to specify the install location for your environment")
+    else()
+        set(_OMP_PATH "")
     endif()
+
+    if (NOT _OMP_PATH)
+        set(POSSIBLE_OMP_PATHS "/opt/intel/oneapi/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so;/usr/lib/x86_64-linux-gnu/libiomp5.so;/opt/intel/lib/intel64_lin/libiomp5.so")
+        foreach(POSSIBLE_OMP_PATH ${POSSIBLE_OMP_PATHS})
+            if (EXISTS ${POSSIBLE_OMP_PATH})
+                get_filename_component(_OMP_PATH ${POSSIBLE_OMP_PATH} DIRECTORY)
+            endif()
+        endforeach()
+    endif()
+
+    if (DEFINED OPENMP_LINK_LIB)
+        message(STATUS "Using user-specified OPENMP_LINK_LIB=${OPENMP_LINK_LIB}")
+    else()
+        set(OPENMP_LINK_LIB "")
+        if (_OMP_PATH)
+            find_library(INTEL_OMP_LIB iomp5 PATHS ${_OMP_PATH})
+        else()
+            find_library(INTEL_OMP_LIB iomp5)
+        endif()
+        if (INTEL_OMP_LIB)
+            set(OPENMP_LINK_LIB iomp5)
+            get_filename_component(_OMP_PATH ${INTEL_OMP_LIB} DIRECTORY)
+        else()
+            find_library(GNU_OMP_LIB gomp PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib /usr/local/lib64 /lib/x86_64-linux-gnu)
+            if (GNU_OMP_LIB)
+                set(OPENMP_LINK_LIB gomp)
+                get_filename_component(_OMP_PATH ${GNU_OMP_LIB} DIRECTORY)
+                message(WARNING "Intel OMP not found. Fallback to GNU OpenMP (libgomp).")
+            else()
+                message(FATAL_ERROR "Could not find Intel OMP (libiomp5) or GNU libgomp in standard locations. Use -DOMP_PATH or -DOPENMP_LINK_LIB to specify.")
+            endif()
+        endif()
+    endif()
+    set(OMP_PATH ${_OMP_PATH})
     link_directories(${OMP_PATH})
 
     set(POSSIBLE_MKL_LIB_PATHS "/opt/intel/oneapi/mkl/latest/lib/intel64/libmkl_core.so;/usr/lib/x86_64-linux-gnu/libmkl_core.so;/opt/intel/mkl/lib/intel64/libmkl_core.so")
@@ -82,7 +115,7 @@ else()
     # compile flags and link libraries
     add_compile_options(-m64 -Wl,--no-as-needed)
     if (NOT PYBIND)
-        link_libraries(mkl_intel_ilp64 mkl_intel_thread mkl_core iomp5 pthread m dl)
+        link_libraries(mkl_intel_ilp64 mkl_intel_thread mkl_core ${OPENMP_LINK_LIB} pthread m dl)
     else()
         # static linking for python so as to minimize customer dependency issues
         link_libraries(
@@ -90,7 +123,7 @@ else()
                 ${MKL_PATH}/libmkl_intel_thread.a
                 ${MKL_PATH}/libmkl_core.a
                 ${MKL_DEF_SO}
-                iomp5
+                ${OPENMP_LINK_LIB}
                 pthread
                 m
                 dl
