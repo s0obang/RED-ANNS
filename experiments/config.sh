@@ -47,11 +47,19 @@ BIN_MAP_REDUCE="../build/tests/test_map_reduce"
 # ---- 데이터셋 설정 ----
 # ⚠️ 디스크 공간 ~57Gi 제한. 추가 스토리지 마운트 권장.
 DATASETS=(
-    "deep10M:../app/deep10M_query10k_local.json"
+    "deep10M:../app/deep10M_query10k_K4.json"
     # "deep100M:../app/deep100M_K4.json"
     # "msturing:../app/msturing100M_K4.json"
     # "text2image:../app/text2image100M_K4.json"
     # "laion:../app/laion100M-512D_K4.json"
+)
+
+# MR-ANNS (MapReduce baseline) 용 per-node JSON 디렉터리
+# test_map_reduce는 para_path + sid + ".json" 형태로 로드
+# deep10M mapreduce 데이터가 없으면 MR-ANNS 스킵
+DATASETS_MR=(
+    # "deep10M:../app/deep10M_mapreduce_count4/"
+    # "deep100M:../app/deep100M_mapreduce_count4/"
 )
 
 # ---- 공통 실험 파라미터 ----
