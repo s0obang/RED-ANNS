@@ -31,32 +31,56 @@ public:
     efanna2e::FixedChunkPQTable pq_table;
     uint8_t *pq_data = nullptr;
     std::vector<float *> thd_dist_vec;
+    bool loaded = false;
+
     void load()
     {
-        unsigned N = 100 * 1000 * 1000, Dim = 96;
-        num_pq_chunks = Dim/4;
+        // PQ file paths — currently uses filename_prefix convention
+        // Default: deep100M hardcoded paths for backward compatibility
         std::string pq_pivots_path = "./data/deep100M_pq_pivots.fbin";
         std::string pq_comp_path = "./data/deep100M_pq_comp.fbin";
+
+        // Check if PQ files exist before attempting to load
+        {
+            std::ifstream test_pivots(pq_pivots_path);
+            std::ifstream test_comp(pq_comp_path);
+            if (!test_pivots.good() || !test_comp.good())
+            {
+                std::cout << "[PQ] WARNING: PQ files not found, PQ pruning disabled." << std::endl;
+                std::cout << "[PQ]   pivots: " << pq_pivots_path << (test_pivots.good() ? " OK" : " MISSING") << std::endl;
+                std::cout << "[PQ]   comp:   " << pq_comp_path << (test_comp.good() ? " OK" : " MISSING") << std::endl;
+                loaded = false;
+                return;
+            }
+        }
+
+        unsigned N = 100 * 1000 * 1000, Dim = 96;
+        num_pq_chunks = Dim/4;
 
         efanna2e::alloc_aligned(((void **)&pq_data), N * num_pq_chunks * sizeof(uint8_t), 1);
         efanna2e::copy_aligned_data_from_file<uint8_t>(pq_comp_path.c_str(), pq_data, N, num_pq_chunks, num_pq_chunks);
         pq_table.load_pq_centroid_bin(pq_pivots_path.c_str(), num_pq_chunks);
 
-        unsigned T = 16;
+        unsigned T = Global::num_threads;
         thd_dist_vec.resize(T);
         for (unsigned i = 0; i < T; i++)
         {
             thd_dist_vec[i] = new float[num_pq_chunks * NUM_PQ_CENTROIDS];
         }
+        loaded = true;
+        std::cout << "[PQ] Loaded successfully (N=" << N << ", chunks=" << num_pq_chunks << ")" << std::endl;
     }
+
     inline void inti_dist_vec(int tid, const float *query)
     {
+        if (!loaded) return;
         float *dist_vec = thd_dist_vec[tid];
         pq_table.populate_chunk_distances(query, dist_vec);
     }
 
     inline float compute_dist(int tid, unsigned base_id)
     {
+        if (!loaded) return 0.0f;  // PQ disabled → always pass pruning check
         float *dist_vec = thd_dist_vec[tid];
         float dist = efanna2e::pq_dist_lookup_single(&pq_data[base_id * num_pq_chunks], num_pq_chunks, dist_vec);
         return dist;
