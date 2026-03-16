@@ -3,7 +3,8 @@
 # Prepare deep10M data for RED-ANNS (method-2 pipeline).
 # - Keep file name compatibility
 # - Build sample + learn GT + bkmeans input/labels/centroids
-# - Build base/learn graphs via external builder if provided, otherwise create temp ring graph
+# - Build base/learn graphs via external builder if provided
+# - If builders are unavailable and VAMANA_FALLBACK=1, generate graphs via build_vamana_graph.py (approx on large base)
 
 set -euo pipefail
 
@@ -26,6 +27,14 @@ DEEP10M_FILE="$DATA_DIR/deep10M.fbin"
 BKMEANS_K="${BKMEANS_K:-4}"
 SAMPLE_SIZE="${SAMPLE_SIZE:-1000}"
 LEARN_GT_K="${LEARN_GT_K:-100}"
+VAMANA_FALLBACK="${VAMANA_FALLBACK:-0}"
+VAMANA_GRAPH_BUILDER="${VAMANA_GRAPH_BUILDER:-$ROOT_DIR/scripts/build_vamana_graph.py}"
+VAMANA_LEARN_GRAPH_K="${VAMANA_LEARN_GRAPH_K:-${BKMEANS_K}}"
+VAMANA_BASE_GRAPH_K="${VAMANA_BASE_GRAPH_K:-32}"
+VAMANA_FALLBACK_MODE="${VAMANA_FALLBACK_MODE:-approx}"
+VAMANA_FALLBACK_LEARN_MODE="${VAMANA_FALLBACK_LEARN_MODE:-exact}"
+VAMANA_FALLBACK_EF="${VAMANA_FALLBACK_EF:-256}"
+VAMANA_FALLBACK_M="${VAMANA_FALLBACK_M:-32}"
 
 SAMPLE_FILE="$DATA_DIR/deep10M_sample1k.fbin"
 SAMPLE_GT_FILE="$DATA_DIR/deep10M_sample1k_gt100.ibin"
@@ -210,9 +219,19 @@ else
     builder_args=()
     [[ -n "${VAMANA_LEARN_ARGS:-}" ]] && IFS=' ' read -r -a builder_args <<< "$VAMANA_LEARN_ARGS"
     "$VAMANA_LEARN_BUILDER" --base "$SAMPLE_FILE" --out "$SAMPLE_GRAPH_FILE" --k "$BKMEANS_K" "${builder_args[@]}"
+  elif [[ "$VAMANA_FALLBACK" == "1" ]]; then
+    echo "Using fallback local Vamana generator for learn graph: $VAMANA_GRAPH_BUILDER"
+    python3 "$VAMANA_GRAPH_BUILDER" \
+      --input "$SAMPLE_FILE" \
+      --output "$SAMPLE_GRAPH_FILE" \
+      --k "$VAMANA_LEARN_GRAPH_K" \
+      --mode "$VAMANA_FALLBACK_LEARN_MODE" \
+      --ef "$VAMANA_FALLBACK_EF" \
+      --M "$VAMANA_FALLBACK_M"
   else
     echo "ERROR: VAMANA_LEARN_BUILDER is not set or not executable."
     echo "       This script cannot safely build a valid learn graph without a real Vamana builder."
+    echo "       To allow fallback generation, set VAMANA_FALLBACK=1."
     echo "       Set VAMANA_LEARN_BUILDER=/path/to/learn_builder and rerun."
     exit 1
   fi
@@ -227,9 +246,19 @@ else
     builder_args=()
     [[ -n "${VAMANA_BASE_ARGS:-}" ]] && IFS=' ' read -r -a builder_args <<< "$VAMANA_BASE_ARGS"
     "$VAMANA_BASE_BUILDER" --base "$DEEP10M_FILE" --out "$BASE_GRAPH_FILE" --k "$BKMEANS_K" "${builder_args[@]}"
+  elif [[ "$VAMANA_FALLBACK" == "1" ]]; then
+    echo "Using fallback local Vamana generator for base graph: $VAMANA_GRAPH_BUILDER"
+    python3 "$VAMANA_GRAPH_BUILDER" \
+      --input "$DEEP10M_FILE" \
+      --output "$BASE_GRAPH_FILE" \
+      --k "$VAMANA_BASE_GRAPH_K" \
+      --mode "$VAMANA_FALLBACK_MODE" \
+      --ef "$VAMANA_FALLBACK_EF" \
+      --M "$VAMANA_FALLBACK_M"
   else
     echo "ERROR: VAMANA_BASE_BUILDER is not set or not executable."
     echo "       This script cannot safely build a valid base graph without a real Vamana builder."
+    echo "       To allow fallback generation, set VAMANA_FALLBACK=1."
     echo "       Set VAMANA_BASE_BUILDER=/path/to/base_builder and rerun."
     exit 1
   fi
