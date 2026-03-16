@@ -35,6 +35,8 @@ VAMANA_FALLBACK_MODE="${VAMANA_FALLBACK_MODE:-approx}"
 VAMANA_FALLBACK_LEARN_MODE="${VAMANA_FALLBACK_LEARN_MODE:-exact}"
 VAMANA_FALLBACK_EF="${VAMANA_FALLBACK_EF:-256}"
 VAMANA_FALLBACK_M="${VAMANA_FALLBACK_M:-32}"
+FORCE_REGEN="${FORCE_REGEN:-0}"
+VAMANA_STRICT="${VAMANA_STRICT:-0}"
 
 SAMPLE_FILE="$DATA_DIR/deep10M_sample1k.fbin"
 SAMPLE_GT_FILE="$DATA_DIR/deep10M_sample1k_gt100.ibin"
@@ -74,6 +76,12 @@ fi
 if [[ ! -f "$DEEP10M_FILE" ]]; then
   echo "[compat] create $DEEP10M_FILE as symlink to $BASE_FILE"
   ln -sfn "$BASE_FILE" "$DEEP10M_FILE"
+fi
+
+if [[ "$FORCE_REGEN" == "1" ]]; then
+  echo "[force] removing cached derived artifacts"
+  rm -f "$SAMPLE_FILE" "$SAMPLE_GT_FILE" "$BKMEANS_INPUT_FILE" "$BKMEANS_LABEL_FILE" "$BKMEANS_CENT_FILE" \
+        "$SAMPLE_GRAPH_FILE" "$BASE_GRAPH_FILE"
 fi
 
 echo "[1/6] make sample(1000) file: $SAMPLE_FILE"
@@ -228,6 +236,10 @@ else
       --mode "$VAMANA_FALLBACK_LEARN_MODE" \
       --ef "$VAMANA_FALLBACK_EF" \
       --M "$VAMANA_FALLBACK_M"
+  elif [[ "$VAMANA_STRICT" == "1" ]]; then
+    echo "ERROR: VAMANA_STRICT=1 and no VAMANA_LEARN_BUILDER is set."
+    echo "       Build with the official/accepted Vamana builder or provide a validated builder wrapper."
+    exit 1
   else
     echo "ERROR: VAMANA_LEARN_BUILDER is not set or not executable."
     echo "       This script cannot safely build a valid learn graph without a real Vamana builder."
@@ -255,6 +267,10 @@ else
       --mode "$VAMANA_FALLBACK_MODE" \
       --ef "$VAMANA_FALLBACK_EF" \
       --M "$VAMANA_FALLBACK_M"
+  elif [[ "$VAMANA_STRICT" == "1" ]]; then
+    echo "ERROR: VAMANA_STRICT=1 and no VAMANA_BASE_BUILDER is set."
+    echo "       Build with the official/accepted Vamana builder or provide a validated builder wrapper."
+    exit 1
   else
     echo "ERROR: VAMANA_BASE_BUILDER is not set or not executable."
     echo "       This script cannot safely build a valid base graph without a real Vamana builder."

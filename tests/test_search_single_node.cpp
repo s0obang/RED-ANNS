@@ -10,7 +10,10 @@ int main(int argc, char *argv[])
 
     // load......
     numaann::Parameters para;
-    para.LoadConfigFromJSON("./app/deep10M_query10k_K4.json");
+    std::string config_path = "./app/deep10M_query10k_K4.json";
+    if (argc >= 2)
+        config_path = argv[1];
+    para.LoadConfigFromJSON(config_path);
 
     unsigned K(para.Get<unsigned>("K"));
     unsigned L(para.Get<unsigned>("L"));
