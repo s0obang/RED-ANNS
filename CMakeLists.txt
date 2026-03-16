@@ -115,15 +115,21 @@ else()
 
     if (NOT DEFINED MKL_THREADING_LIB OR "${MKL_THREADING_LIB}" STREQUAL "")
         if (OPENMP_LINK_LIB STREQUAL "iomp5")
-            set(MKL_THREADING_LIB mkl_intel_thread)
+            set(_CANDIDATES mkl_intel_thread mkl_gnu_thread mkl_intel_sequential)
         else()
-            if (OPENMP_LINK_LIB STREQUAL "gomp")
-                # GNU OpenMP runtime is not ABI-compatible with Intel's threaded MKL lib.
-                # Use sequential MKL when linking against gomp.
-                set(MKL_THREADING_LIB mkl_intel_sequential)
-            else()
-                set(MKL_THREADING_LIB mkl_intel_thread)
+            # GNU OpenMP runtime -> use GNU-threaded MKL variant when available.
+            set(_CANDIDATES mkl_gnu_thread mkl_intel_thread mkl_intel_sequential)
+        endif()
+
+        foreach(_th ${_CANDIDATES})
+            find_library(_MKL_THREAD_LIB_FOUND ${_th} PATHS ${MKL_PATH} NO_DEFAULT_PATH)
+            if (_MKL_THREAD_LIB_FOUND)
+                set(MKL_THREADING_LIB ${_th})
+                break()
             endif()
+        endforeach()
+        if (NOT MKL_THREADING_LIB)
+            message(FATAL_ERROR "Could not find a usable MKL threading lib in ${MKL_PATH}. Set -DMKL_THREADING_LIB manually.")
         endif()
     endif()
 
