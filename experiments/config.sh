@@ -47,7 +47,8 @@ BIN_MAP_REDUCE="../build/tests/test_map_reduce"
 # ---- 데이터셋 설정 ----
 # ⚠️ 디스크 공간 ~57Gi 제한. 추가 스토리지 마운트 권장.
 DATASETS=(
-    "deep100M:../app/deep100M_K4.json"
+    "deep10M:../app/deep10M_query10k_local.json"
+    # "deep100M:../app/deep100M_K4.json"
     # "msturing:../app/msturing100M_K4.json"
     # "text2image:../app/text2image100M_K4.json"
     # "laion:../app/laion100M-512D_K4.json"
